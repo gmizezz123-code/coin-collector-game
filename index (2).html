@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Coin Collector — Web Edition</title>
+<style>
+:root{--ink:#10213b;--panel:rgba(9,20,42,.84);--gold:#ffd34e;--cyan:#6ee7ff}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#071329;color:#fff;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+body{display:grid;place-items:center}
+#wrap{position:relative;width:min(100vw,160vh);height:min(100vh,62.5vw);min-height:320px;overflow:hidden;background:#101c48;box-shadow:0 0 50px #0008}
+canvas{display:block;width:100%;height:100%;touch-action:none}
+.hud{position:absolute;inset:0 0 auto 0;padding:clamp(8px,1.5vw,18px);display:flex;justify-content:space-between;align-items:flex-start;gap:8px;pointer-events:none}
+.pill{background:var(--panel);border:1px solid #ffffff2c;border-radius:14px;padding:8px 13px;box-shadow:0 8px 22px #0003;backdrop-filter:blur(8px);font-weight:750;font-size:clamp(12px,1.6vw,17px)}
+.pill small{display:block;font-size:.7em;color:#b9c9e8;font-weight:600;margin-bottom:2px}
+#health{letter-spacing:2px;color:#ff718b}
+#progress{height:6px;width:clamp(80px,16vw,180px);background:#ffffff22;border-radius:9px;overflow:hidden;margin-top:6px}
+#progress span{display:block;height:100%;width:0;background:linear-gradient(90deg,#58e5ff,#a2ffbb);transition:width .2s}
+#overlay{position:absolute;inset:0;display:grid;place-items:center;background:linear-gradient(135deg,#06142bd9,#111c46b8);padding:18px}
+.card{width:min(520px,94%);text-align:center;border:1px solid #ffffff32;background:#0b1736eF;border-radius:24px;padding:clamp(20px,4vw,38px);box-shadow:0 24px 80px #0008}
+.logo{font-size:clamp(28px,5vw,52px);font-weight:1000;line-height:1;letter-spacing:-1.5px;background:linear-gradient(110deg,#fff,#ffe17b 55%,#ff9e45);color:transparent;background-clip:text}
+.sub{color:#b9c9e8;line-height:1.6;margin:14px 0 20px}
+button{border:0;border-radius:13px;background:linear-gradient(135deg,#ffe16c,#ffad38);color:#17213a;font-weight:900;font-size:16px;padding:13px 22px;cursor:pointer;box-shadow:0 8px 0 #b76d20;transition:transform .12s,filter .12s}
+button:hover{filter:brightness(1.06);transform:translateY(-1px)}button:active{transform:translateY(4px);box-shadow:0 4px 0 #b76d20}
+.controls{font-size:12px;color:#93a8d0;margin-top:18px;line-height:1.7}
+#toast{position:absolute;left:50%;top:23%;transform:translate(-50%,-10px);opacity:0;transition:.25s;background:#0b1736eF;border:1px solid #ffffff35;border-radius:999px;padding:9px 17px;font-weight:800;pointer-events:none}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+.mobile{display:none;position:absolute;bottom:16px;left:0;right:0;justify-content:space-between;padding:0 18px;pointer-events:none}
+.pad{display:flex;gap:10px;pointer-events:auto}.ctrl{width:56px;height:56px;border-radius:18px;background:#0b1736c9;border:1px solid #ffffff45;color:white;font-size:23px;box-shadow:0 5px 0 #0005;touch-action:none}
+@media(max-width:700px){.mobile{display:flex}.pill{padding:6px 9px}.sub{font-size:14px}}
+</style>
+</head>
+<body>
+<div id="wrap">
+ <canvas id="game" width="1280" height="800" aria-label="Coin Collector game"></canvas>
+ <div class="hud">
+  <div class="pill"><small>COINS COLLECTED</small><span id="coins">0</span> / <span id="target">18</span><div id="progress"><span id="bar"></span></div></div>
+  <div class="pill"><small>HEALTH</small><span id="health">♥ ♥ ♥</span></div>
+  <div class="pill"><small>LEVEL</small><span id="level">1</span> <span style="color:#8da8d7">•</span> <span id="status">COLLECT THEM ALL</span></div>
+ </div>
+ <div id="toast"></div>
+ <div id="overlay">
+  <div class="card">
+   <div class="logo">COIN<br>COLLECTOR</div>
+   <div class="sub" id="intro">เก็บเหรียญให้ครบ 18 เหรียญ หลบเจ้ามอนสเตอร์ แล้วไปให้ถึงประตูเส้นชัย!</div>
+   <button id="start">เริ่มเล่น ▶</button>
+   <div class="controls">คีย์บอร์ด: A / D หรือ ← / → เพื่อเดิน · Space / W / ↑ เพื่อกระโดด<br>มือถือ: ใช้ปุ่มด้านล่าง · กด P เพื่อหยุดเกม</div>
+  </div>
+ </div>
+ <div class="mobile">
+  <div class="pad"><button class="ctrl" id="left">◀</button><button class="ctrl" id="right">▶</button></div>
+  <div class="pad"><button class="ctrl" id="jump">⬆</button></div>
+ </div>
+</div>
+<script>
+(()=>{
+const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
+const W=1280,H=800,groundY=690,target=18;
+let currentLevel=1;
+const themes=[
+ {name:"GREEN VALLEY",top:"#101a48",mid:"#354a82",bottom:"#f5a66b",ground:"#142846",platform:"#63e6ad",coin:"#ffdc45",enemy:"#e94d7c"},
+ {name:"LAVA WORLD",top:"#240b22",mid:"#8b2b31",bottom:"#ff8b3d",ground:"#351b2b",platform:"#ff7547",coin:"#ffe16a",enemy:"#ff405d"},
+ {name:"FROZEN KINGDOM",top:"#05264b",mid:"#2779a6",bottom:"#b8f4ff",ground:"#17496d",platform:"#b6f4ff",coin:"#fff5a1",enemy:"#927bff"}
+];
+let running=false,paused=false,ended=false,frame=0,score=0,lives=3,camera=0,toastTimer=0;
+const keys={left:false,right:false,jump:false};
+const player={x:90,y:590,w:42,h:58,vx:0,vy:0,onGround:false,inv:0,face:1};
+let coins=[],enemies=[],platforms=[],particles=[],gate={x:0,y:0};
+const rand=(a,b)=>a+Math.random()*(b-a);
+function level(){
+ const layouts=[
+  {
+   platforms:[[0,690,700,110],[760,690,520,110],[230,565,150,20],[465,475,145,20],[680,560,125,20],[900,485,150,20],[1090,575,120,20],[1330,690,500,110],[1400,560,140,20],[1630,470,150,20],[1900,690,500,110],[1970,555,130,20],[2180,465,150,20]],
+   coins:[[150,620],[255,520],[300,520],[345,520],[500,430],[545,430],[590,430],[700,515],[790,620],[930,440],[975,440],[1020,440],[1135,530],[1375,620],[1440,515],[1490,515],[1660,425],[1710,425],[1760,425],[1940,620],[2000,510],[2050,510],[2210,420],[2260,420]],
+   enemySpeed:1
+  },
+  {
+   platforms:[[0,690,430,110],[500,690,330,110],[900,690,360,110],[1320,690,330,110],[1710,690,690,110],[170,560,130,20],[370,475,125,20],[610,545,130,20],[760,430,120,20],[980,535,130,20],[1130,450,125,20],[1410,550,130,20],[1530,430,120,20],[1810,535,130,20],[2020,440,145,20],[2220,520,120,20]],
+   coins:[[90,620],[190,515],[230,515],[390,430],[430,430],[560,620],[640,500],[690,500],[790,385],[940,620],[1010,490],[1060,490],[1160,405],[1230,620],[1450,505],[1490,505],[1580,385],[1770,620],[1850,490],[1900,490],[2070,395],[2140,620],[2250,475],[2300,475]],
+   enemySpeed:1.55
+  },
+  {
+   platforms:[[0,690,320,110],[390,690,260,110],[720,690,240,110],[1030,690,260,110],[1370,690,260,110],[1710,690,250,110],[2030,690,370,110],[120,555,115,18],[300,455,110,18],[480,535,105,18],[620,420,110,18],[800,515,105,18],[940,400,110,18],[1110,520,105,18],[1270,430,110,18],[1450,510,105,18],[1600,390,110,18],[1790,500,105,18],[1930,410,110,18],[2140,500,115,18],[2260,390,100,18]],
+   coins:[[70,620],[145,510],[335,410],[430,620],[510,490],[650,375],[760,620],[830,470],[970,355],[1080,620],[1140,475],[1300,385],[1420,620],[1480,465],[1630,345],[1760,620],[1820,455],[1960,365],[2070,620],[2170,455],[2300,345],[250,620],[690,620],[1540,620]],
+   enemySpeed:2.1
+  }
+ ];
+ const data=layouts[currentLevel-1];
+ platforms=data.platforms.map(p=>({x:p[0],y:p[1],w:p[2],h:p[3]}));
+ coins=data.coins.map((p,i)=>({x:p[0],y:p[1],r:15,got:false,phase:i*.8}));
+ const ranges=currentLevel===1?[[380,650],[800,1200],[1350,1780],[1910,2360]]:
+ currentLevel===2?[[100,400],[520,800],[920,1240],[1740,2350],[1350,1640]]:
+ [[50,300],[400,630],[740,940],[1050,1280],[1390,1620],[1740,1950],[2040,2380]];
+ enemies=ranges.map((r,i)=>({x:r[0]+40,y:groundY-42,w:42,h:42,min:r[0],max:r[1],v:(1.7+i*.25)*data.enemySpeed}));
+ gate={x:2320,y:groundY-100};camera=0;
+ player.x=90;player.y=groundY-player.h;player.vx=player.vy=0;player.inv=0;
+ score=0;lives=3;frame=0;particles=[];updateHUD();
+ document.getElementById('level').textContent=currentLevel+' - '+themes[currentLevel-1].name;
+}
+function updateHUD(){document.getElementById('coins').textContent=score;document.getElementById('target').textContent=target;document.getElementById('bar').style.width=Math.min(100,score/target*100)+'%';document.getElementById('health').textContent='♥ '.repeat(lives).trim()||'—';document.getElementById('status').textContent=score>=target?'FIND THE GATE':'COLLECT THEM ALL';}
+function showToast(s){let t=document.getElementById('toast');t.textContent=s;t.classList.add('show');toastTimer=100;}
+function burst(x,y,color,n=12){for(let i=0;i<n;i++)particles.push({x,y,vx:rand(-3,3),vy:rand(-4,1),life:rand(18,36),color,size:rand(3,7)});}
+function start(){currentLevel=1;level();running=true;paused=false;ended=false;document.getElementById('overlay').style.display='none';}
+function nextLevel(){currentLevel++;level();running=true;paused=false;ended=false;document.querySelector('.logo').innerHTML='COIN<br>COLLECTOR';document.getElementById('intro').textContent='เก็บเหรียญให้ครบ 18 เหรียญ หลบมอนสเตอร์ แล้วไปให้ถึงประตูเส้นชัย!';document.getElementById('start').textContent='เริ่มด่าน '+currentLevel+' ▶';document.getElementById('overlay').style.display='none';}
+document.getElementById('start').onclick=start;
+function finish(win){
+ running=false;ended=true;document.getElementById('overlay').style.display='grid';
+ const finalWin=win&&currentLevel===3;
+ document.querySelector('.logo').innerHTML=win?(finalWin?'YOU WIN!':'LEVEL<br>COMPLETE!'):'GAME<br>OVER';
+ document.getElementById('intro').textContent=win?(finalWin?'ยอดเยี่ยม! คุณพิชิต Coin Collector ครบทั้ง 3 ด่านแล้ว!':`ผ่านด่าน ${currentLevel} สำเร็จ! พร้อมไปด่านต่อไปหรือยัง?`):`เก็บได้ ${score} เหรียญ ลองอีกครั้งเพื่อเอาชนะมอนสเตอร์!`;
+ const btn=document.getElementById('start');
+ btn.textContent=win&&!finalWin?'ด่านต่อไป ▶':'เล่นอีกครั้ง ↻';
+ btn.onclick=win&&!finalWin?nextLevel:start;
+}
+function key(e,down){let k=e.key.toLowerCase();if(['arrowleft','arrowright','arrowup',' ','a','d','w','p'].includes(k))e.preventDefault();if(k==='a'||k==='arrowleft')keys.left=down;if(k==='d'||k==='arrowright')keys.right=down;if(k===' '||k==='w'||k==='arrowup')keys.jump=down;if(down&&k==='p'&&running)paused=!paused;}
+window.addEventListener('keydown',e=>key(e,true));window.addEventListener('keyup',e=>key(e,false));
+function bind(id,k){let el=document.getElementById(id);const on=e=>{e.preventDefault();keys[k]=true},off=e=>{e.preventDefault();keys[k]=false};el.addEventListener('pointerdown',on);['pointerup','pointercancel','pointerleave'].forEach(ev=>el.addEventListener(ev,off));}
+bind('left','left');bind('right','right');bind('jump','jump');
+function collide(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y}
+function update(){
+ if(!running||paused)return;frame++;
+ player.vx=(keys.right?4.8:0)-(keys.left?4.8:0);if(player.vx)player.face=Math.sign(player.vx);
+ if(keys.jump&&player.onGround){player.vy=-13.8;player.onGround=false;burst(player.x+player.w/2,player.y+player.h,'#b7d9ff',5)}
+ player.vy+=.62;player.vy=Math.min(player.vy,16);player.x+=player.vx;player.y+=player.vy;player.onGround=false;
+ for(const p of platforms){if(player.x+player.w>p.x&&player.x<p.x+p.w&&player.y+player.h>=p.y&&player.y+player.h-player.vy<=p.y&&player.vy>=0){player.y=p.y-player.h;player.vy=0;player.onGround=true}}
+ player.x=Math.max(0,Math.min(2370,player.x));
+ if(player.y>H+100){hit(true)}
+ if(player.inv>0)player.inv--;
+ for(const c of coins){if(!c.got&&Math.hypot(player.x+player.w/2-c.x,player.y+player.h/2-c.y)<31){c.got=true;score++;burst(c.x,c.y,'#ffd34e',15);showToast('+'+1+' COIN!');updateHUD()}}
+ for(const en of enemies){en.x+=en.v;if(en.x<en.min||en.x+en.w>en.max)en.v*=-1;if(collide(player,en)&&player.inv===0){if(player.vy>1&&player.y+player.h-en.y<22){en.x=-200;player.vy=-9;burst(en.x,en.y,'#8bffb4',18)}else hit(false)}}
+ if(player.x+player.w>gate.x&&player.x<gate.x+55&&player.y+player.h>gate.y){if(score>=target)finish(true);else showToast('ต้องเก็บเหรียญให้ครบ '+target+' เหรียญ!')}
+ camera=Math.max(0,Math.min(2400-W,player.x-W*.35));
+ particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.12;p.life--});particles=particles.filter(p=>p.life>0);
+ if(toastTimer>0&&--toastTimer===0)document.getElementById('toast').classList.remove('show');
+}
+function hit(fall){if(player.inv>0)return;lives--;updateHUD();player.inv=100;player.vy=-8;player.x=Math.max(20,player.x-55);player.y=Math.min(player.y,groundY-player.h);burst(player.x,player.y,'#ff6689',18);if(lives<=0)finish(false);else showToast(fall?'ระวัง! ตกจากแท่น':'โดนมอนสเตอร์!');}
+function roundRect(x,y,w,h,r,fill,stroke){ctx.beginPath();ctx.roundRect(x,y,w,h,r);if(fill){ctx.fillStyle=fill;ctx.fill()}if(stroke){ctx.strokeStyle=stroke;ctx.stroke()}}
+function drawBackground(){
+ const theme=themes[currentLevel-1];
+ let g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,theme.top);g.addColorStop(.6,theme.mid);g.addColorStop(1,theme.bottom);ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+ for(let i=0;i<90;i++){let x=(i*173-camera*.12)%W;if(x<0)x+=W;let y=(i*71)%390;ctx.globalAlpha=.25+(i%5)*.1;ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x,y,1+(i%3)*.5,0,Math.PI*2);ctx.fill()}ctx.globalAlpha=1;
+ if(currentLevel===1){
+  ctx.fillStyle='#fff0bb';ctx.beginPath();ctx.arc(1030,125,43,0,Math.PI*2);ctx.fill();
+  for(let layer=0;layer<3;layer++){ctx.beginPath();ctx.moveTo(0,H);let step=110;for(let x=-step;x<=W+step;x+=step){let y=420+layer*65+Math.sin((x+camera*(.08+layer*.07))*.008+layer)*55+Math.cos(x*.017)*18;ctx.lineTo(x,y)}ctx.lineTo(W,H);ctx.lineTo(0,H);ctx.closePath();ctx.fillStyle=['#243866','#1b3156','#142846'][layer];ctx.fill()}
+ }else if(currentLevel===2){
+  // ภูเขาไฟและลาวา
+  for(let i=0;i<5;i++){let x=i*290-(camera*.08%290);ctx.fillStyle=i%2?'#5b202e':'#762b32';ctx.beginPath();ctx.moveTo(x-100,610);ctx.lineTo(x+75,330+(i%2)*65);ctx.lineTo(x+240,610);ctx.closePath();ctx.fill();ctx.fillStyle='#ffb044';ctx.beginPath();ctx.moveTo(x+35,395+(i%2)*65);ctx.lineTo(x+75,330+(i%2)*65);ctx.lineTo(x+115,395+(i%2)*65);ctx.closePath();ctx.fill()}
+  ctx.fillStyle='#ff5b32';for(let i=0;i<12;i++){let x=(i*117+frame*.35)%W;ctx.globalAlpha=.5;ctx.beginPath();ctx.arc(x,590+(i%3)*35,3+i%4,0,Math.PI*2);ctx.fill()}ctx.globalAlpha=1;
+ }else{
+  // ภูเขาน้ำแข็งและเกล็ดหิมะ
+  for(let i=0;i<7;i++){let x=i*205-(camera*.07%205);ctx.fillStyle=i%2?'#397da7':'#245d8d';ctx.beginPath();ctx.moveTo(x-80,620);ctx.lineTo(x+65,300+(i%3)*55);ctx.lineTo(x+205,620);ctx.closePath();ctx.fill();ctx.fillStyle='#d9ffff';ctx.beginPath();ctx.moveTo(x+35,370+(i%3)*55);ctx.lineTo(x+65,300+(i%3)*55);ctx.lineTo(x+95,370+(i%3)*55);ctx.closePath();ctx.fill()}
+  ctx.strokeStyle='#e7ffff';ctx.lineWidth=2;for(let i=0;i<35;i++){let x=(i*89+frame*.6)%W,y=(i*61+frame*.9)%600;ctx.globalAlpha=.65;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x-4,y+9);ctx.stroke()}ctx.globalAlpha=1;
+ }
+}
+function draw(){
+ ctx.clearRect(0,0,W,H);drawBackground();ctx.save();ctx.translate(-camera,0);
+ // platforms
+ for(const p of platforms){let grad=ctx.createLinearGradient(0,p.y,0,p.y+p.h);grad.addColorStop(0,themes[currentLevel-1].platform);grad.addColorStop(.16,themes[currentLevel-1].ground);grad.addColorStop(1,'#172d50');roundRect(p.x,p.y,p.w,p.h,8,grad,'#ffffffaa');ctx.fillStyle='#ffffff14';for(let x=p.x+12;x<p.x+p.w-10;x+=35)ctx.fillRect(x,p.y+28,15,4)}
+ // gate
+ ctx.save();ctx.shadowColor='#70efff';ctx.shadowBlur=25;roundRect(gate.x,gate.y,58,100,15,'#4de3e8','#d9ffff');ctx.shadowBlur=0;roundRect(gate.x+10,gate.y+12,38,88,10,'#183e65');ctx.fillStyle='#ffe27a';ctx.beginPath();ctx.arc(gate.x+40,gate.y+53,4,0,Math.PI*2);ctx.fill();ctx.restore();
+ // coins
+ for(const c of coins){if(c.got)continue;let bob=Math.sin(frame*.08+c.phase)*4;ctx.save();ctx.translate(c.x,c.y+bob);ctx.rotate(Math.sin(frame*.04+c.phase)*.18);ctx.shadowColor=themes[currentLevel-1].coin;ctx.shadowBlur=18;let grad=ctx.createRadialGradient(-5,-6,2,0,0,18);grad.addColorStop(0,'#fffbe0');grad.addColorStop(.45,themes[currentLevel-1].coin);grad.addColorStop(1,'#d98518');ctx.fillStyle=grad;ctx.beginPath();ctx.ellipse(0,0,13,16,0,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;ctx.strokeStyle='#fff1a0';ctx.lineWidth=2;ctx.stroke();ctx.fillStyle='#9e5b12';ctx.font='bold 17px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('$',0,1);ctx.restore()}
+ // enemies
+ for(const e of enemies){if(e.x<-100)continue;ctx.save();ctx.translate(e.x,e.y);ctx.fillStyle=themes[currentLevel-1].enemy;ctx.shadowColor=themes[currentLevel-1].enemy;ctx.shadowBlur=12;roundRect(0,5,e.w,e.h-5,14,themes[currentLevel-1].enemy,'#ffb5c8');ctx.shadowBlur=0;ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(12,18,7,0,Math.PI*2);ctx.arc(30,18,7,0,Math.PI*2);ctx.fill();ctx.fillStyle='#26304c';ctx.beginPath();ctx.arc(14,19,3,0,Math.PI*2);ctx.arc(28,19,3,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#70294b';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(12,32);ctx.lineTo(30,32);ctx.stroke();ctx.restore()}
+ // player
+ if(!(player.inv>0&&Math.floor(frame/5)%2===0)){ctx.save();ctx.translate(player.x+player.w/2,player.y+player.h/2);if(player.face<0)ctx.scale(-1,1);ctx.shadowColor='#60dfff';ctx.shadowBlur=15;roundRect(-21,-28,42,56,13,'#48c9f4','#d7f9ff');ctx.shadowBlur=0;roundRect(-15,-18,30,23,9,'#eafaff');ctx.fillStyle='#132a51';ctx.beginPath();ctx.arc(-6,-7,3.5,0,Math.PI*2);ctx.arc(7,-7,3.5,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#132a51';ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(1,0,6,.2,Math.PI-.2);ctx.stroke();roundRect(-16,20,12,10,4,'#263b67');roundRect(5,20,12,10,4,'#263b67');ctx.restore()}
+ // particles
+ for(const p of particles){ctx.globalAlpha=Math.max(0,p.life/36);ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fill()}ctx.globalAlpha=1;
+ ctx.restore();
+ if(paused&&running){ctx.fillStyle='#07132999';ctx.fillRect(0,0,W,H);roundRect(W/2-160,H/2-55,320,110,20,'#0b1736','#ffffff44');ctx.fillStyle='white';ctx.font='bold 34px system-ui';ctx.textAlign='center';ctx.fillText('PAUSED',W/2,H/2+10);ctx.font='16px system-ui';ctx.fillText('กด P เพื่อเล่นต่อ',W/2,H/2+37)}
+}
+function loop(){update();draw();requestAnimationFrame(loop)}
+level();loop();
+})();
+</script>
+</body>
+</html>
